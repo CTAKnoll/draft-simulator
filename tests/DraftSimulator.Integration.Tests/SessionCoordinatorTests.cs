@@ -209,6 +209,24 @@ public sealed class SessionCoordinatorTests
     }
 
     [Fact]
+    public async Task DisconnectedClientReconnectsToItsCompletionScreen()
+    {
+        await using var session = await TestSession.CreateAsync(TimeSpan.FromMilliseconds(20));
+        await CompleteDraftAsync(session);
+        var playerId = session.Client.Snapshot.LocalPlayerId;
+        var reconnectState = session.Harness.LoadClientState();
+        Assert.Equal(ApplicationScreen.Complete, session.Client.Snapshot.Screen);
+
+        session.Harness.DisconnectClient();
+        await WaitUntilAsync(() => session.Client.Snapshot.Screen == ApplicationScreen.Start);
+        await session.Client.ReconnectAsync(reconnectState!);
+
+        await WaitUntilAsync(() => session.Client.Snapshot.Screen == ApplicationScreen.Complete);
+        Assert.Equal(playerId, session.Client.Snapshot.LocalPlayerId);
+        Assert.Equal(2, session.Client.Snapshot.Collection.Count);
+    }
+
+    [Fact]
     public async Task ReconnectWithWrongSessionIsRejectedAndClearsReconnectState()
     {
         await using var session = await TestSession.CreateAsync(TimeSpan.FromMilliseconds(20));

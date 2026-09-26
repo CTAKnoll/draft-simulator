@@ -100,6 +100,7 @@ public sealed class SessionCoordinator : IAsyncDisposable
         public bool IsConnected { get; set; } = true;
         public PreparationStatus PreparationStatus { get; set; } = PreparationStatus.Waiting;
         public bool SubmittedAssetNeed { get; set; }
+        public bool IsReconnectAssetSync { get; set; }
     }
 
     private sealed class AssetNeedPages
@@ -457,6 +458,13 @@ public sealed class SessionCoordinator : IAsyncDisposable
         }
         try { MessagePhaseValidator.ValidateClient((ClientMessageCode)message.Code, _phase); }
         catch (ProtocolException) { await SendErrorAsync(received.PeerId, ErrorCode.InvalidActionForState, false); return; }
+        if (_phase == ProtocolPhase.Complete &&
+            (message.Code is (int)ClientMessageCode.AssetNeed or (int)ClientMessageCode.PreparationReady or (int)ClientMessageCode.PreparationFailed) &&
+            !_players.Single(x => x.PeerId == received.PeerId).IsReconnectAssetSync)
+        {
+            await SendErrorAsync(received.PeerId, ErrorCode.InvalidActionForState, false);
+            return;
+        }
         switch (message.Payload)
         {
             case SetNameDto x: await SetRemoteNameAsync(received.PeerId, x.Name); break;
@@ -503,6 +511,7 @@ public sealed class SessionCoordinator : IAsyncDisposable
         _authenticatedPeers.Add(received.PeerId);
         player.PreparationStatus = PreparationStatus.Waiting;
         player.SubmittedAssetNeed = false;
+        player.IsReconnectAssetSync = true;
         _assetNeedPages[received.PeerId] = new();
         await SendAsync(new MarkHelloReceivedCommand(received.ConnectionId));
         await SendHostAsync(received.PeerId, HostMessageCode.Welcome, new WelcomeDto(player.Id, _sessionId, ReconnectResult.Reconnected));
@@ -710,10 +719,13 @@ public sealed class SessionCoordinator : IAsyncDisposable
     private async Task ReceiveAssetNeedAsync(SteamPeerId peerId, AssetNeedDto page)
     {
         if (_preparedAssets is null || page.SessionId != _sessionId) { await ReceivePreparationFailedAsync(peerId, new(page.SessionId, ErrorCode.ClientAssetVerificationFailed)); return; }
+        var player = PlayerForPeer(peerId);
+        if (_phase is ProtocolPhase.Drafting or ProtocolPhase.Complete && !player.IsReconnectAssetSync)
+        { await SendErrorAsync(peerId, ErrorCode.InvalidActionForState, false); return; }
         var requested = _assetNeedPages.GetValueOrDefault(peerId)?.Add(page);
         if (requested is null) return;
-        var player = PlayerForPeer(peerId); player.SubmittedAssetNeed = true; player.PreparationStatus = requested.Length == 0 ? PreparationStatus.Waiting : PreparationStatus.Transferring;
-        await BroadcastPreparationAsync(); PublishPreparation();
+        player.SubmittedAssetNeed = true; player.PreparationStatus = requested.Length == 0 ? PreparationStatus.Waiting : PreparationStatus.Transferring;
+        if (_phase == ProtocolPhase.PreparingAssets) { await BroadcastPreparationAsync(); PublishPreparation(); }
         var hashes = requested.Select(x => new CoreAssetHash(x.Value)).ToArray();
         var generation = _preparationGeneration;
         var preparedAssets = _preparedAssets;
@@ -730,7 +742,14 @@ public sealed class SessionCoordinator : IAsyncDisposable
                     await _transport.Commands.WriteAsync(new SendMessageCommand(peerId, frame), _stopping.Token);
                 }
             }
-            catch { await EnqueueAsync(() => generation == _preparationGeneration ? RollbackPreparationAsync(player, ErrorCode.HostAssetPreparationFailed) : Task.CompletedTask); }
+            catch
+            {
+                await EnqueueAsync(() => generation != _preparationGeneration
+                    ? Task.CompletedTask
+                    : player.IsReconnectAssetSync && (_phase is ProtocolPhase.Drafting or ProtocolPhase.Complete)
+                        ? FailReconnectAsync(player, ErrorCode.ClientAssetVerificationFailed)
+                        : RollbackPreparationAsync(player, ErrorCode.HostAssetPreparationFailed));
+            }
         });
     }
 
@@ -739,12 +758,15 @@ public sealed class SessionCoordinator : IAsyncDisposable
         if (ready.SessionId != _sessionId) { await SendErrorAsync(peerId, ErrorCode.InvalidActionForState, false); return; }
         var player = PlayerForPeer(peerId);
         if (!player.SubmittedAssetNeed) { await SendErrorAsync(peerId, ErrorCode.InvalidActionForState, false); return; }
+        if (_phase is ProtocolPhase.Drafting or ProtocolPhase.Complete && !player.IsReconnectAssetSync)
+        { await SendErrorAsync(peerId, ErrorCode.InvalidActionForState, false); return; }
         player.PreparationStatus = PreparationStatus.Ready;
         if (_phase is ProtocolPhase.Drafting or ProtocolPhase.Complete)
         {
             var result = _draft!.Reconnect(new CorePlayerId(player.Id.Value), peerId.Value);
             if (!result.Succeeded) { await SendErrorAsync(peerId, ErrorCode.SessionNoLongerAvailable, true); return; }
             player.IsConnected = true;
+            player.IsReconnectAssetSync = false;
             if (_phase == ProtocolPhase.Drafting)
                 await BroadcastDraftAsync();
             else
@@ -761,13 +783,20 @@ public sealed class SessionCoordinator : IAsyncDisposable
         if (_phase is ProtocolPhase.Drafting or ProtocolPhase.Complete)
         {
             var player = PlayerForPeer(peerId);
-            player.PreparationStatus = PreparationStatus.Failed;
-            _authenticatedPeers.Remove(peerId);
-            await SendErrorAsync(peerId, failed.ErrorCode, true);
-            await SendAsync(new ClosePeerCommand(peerId, "Reconnect asset verification failed."));
+            if (!player.IsReconnectAssetSync) { await SendErrorAsync(peerId, ErrorCode.InvalidActionForState, false); return; }
+            await FailReconnectAsync(player, failed.ErrorCode);
             return;
         }
         await RollbackPreparationAsync(PlayerForPeer(peerId), failed.ErrorCode);
+    }
+
+    private async Task FailReconnectAsync(PlayerState player, ErrorCode error)
+    {
+        player.PreparationStatus = PreparationStatus.Failed;
+        player.IsReconnectAssetSync = false;
+        _authenticatedPeers.Remove(player.PeerId);
+        await SendErrorAsync(player.PeerId, error, true);
+        await SendAsync(new ClosePeerCommand(player.PeerId, "Reconnect asset verification failed."));
     }
 
     private Task ReportPreparationFailureAsync(ErrorCode code) => SendClientAsync(_hostPeer, ClientMessageCode.PreparationFailed, new PreparationFailedDto(_sessionId, code));
@@ -946,6 +975,7 @@ public sealed class SessionCoordinator : IAsyncDisposable
     private async Task ReopenLobbyCoreAsync()
     {
         if (_role != SessionRole.Host || _phase != ProtocolPhase.Complete) return;
+        if (_players.Any(x => x.IsReconnectAssetSync)) { SetError(ErrorCode.InvalidActionForState); return; }
         foreach (var player in _players.Where(x => !x.IsHost)) { _completedPlayers[player.PeerId] = player; await SendHostAsync(player.PeerId, HostMessageCode.LobbyAvailability, new LobbyAvailabilityDto(true)); }
         var host = _players.Single(x => x.IsHost); host.IsReady = false; host.Order = 0; host.PreparationStatus = PreparationStatus.Waiting;
         _players.Clear(); _players.Add(host); ResetRoundState(); _phase = ProtocolPhase.LobbyOpen; _lobbyRevision++;
@@ -1121,7 +1151,7 @@ public sealed class SessionCoordinator : IAsyncDisposable
         {
             var player = _players.FirstOrDefault(x => x.PeerId == peerId); if (player is null) return;
             _authenticatedPeers.Remove(peerId); _assetNeedPages.Remove(peerId);
-            player.IsConnected = false; player.PreparationStatus = PreparationStatus.Waiting;
+            player.IsConnected = false; player.IsReconnectAssetSync = false; player.PreparationStatus = PreparationStatus.Waiting;
             _draft.Disconnect(new CorePlayerId(player.Id.Value));
             if (_phase == ProtocolPhase.Drafting) { await BroadcastDraftAsync(); PublishHostDraft(); }
             return;

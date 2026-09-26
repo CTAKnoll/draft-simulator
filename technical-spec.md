@@ -70,7 +70,7 @@ Project responsibilities:
 - `DraftSimulator.App`: Avalonia application, views, view models, navigation, dependency registration, and application startup/shutdown.
 - `DraftSimulator.Core`: domain models, validation, pack generation, draft state machine, host authority rules, and interfaces for infrastructure dependencies. It must not reference Avalonia, Steamworks, filesystem implementations, or SkiaSharp.
 - `DraftSimulator.Protocol`: wire DTOs, message codes, binary asset framing, serializers, protocol-version checks, and protocol validation.
-- `DraftSimulator.Infrastructure`: Steamworks adapter, Steam transport worker, filesystem scanning, INI and JSON persistence, image transformation, session cache, logging, and Cockatrice export implementation.
+- `DraftSimulator.Infrastructure`: Steamworks and named-pipe local-debug transports, filesystem scanning, Scryfall set import, INI and JSON persistence, image transformation, session cache, logging, and Cockatrice export implementation.
 - Test projects: tests scoped to the corresponding production project, with end-to-end state tests using an in-memory fake transport.
 
 Steamworks.NET should be vendored or referenced at a pinned commit/release rather than tracking a moving branch. Preserve all required third-party license notices. Copy Valve's `steam_api64.dll` into publish output.
@@ -120,11 +120,12 @@ Do not execute Avalonia UI operations on the Steam worker. Do not parse or trans
 
 ### 5.4 Offline Debug Transport
 
-Debug builds may run without Steam by using `--offline --profile <name>`. This development-only mode uses machine-local named pipes and must not open TCP or UDP ports.
+Debug builds may run without Steam by using `--offline --profile <name>`. The separately published `DraftSimulator.Debug.exe` is compiled for offline debugging and defaults to `--offline --profile host`; `--profile <name>` selects another instance. Build it with `publish-offline-debug.ps1`. This development-only mode uses machine-local named pipes and must not open TCP or UDP ports.
 
 - Each application process uses a distinct profile name and stable locally persisted debug peer ID.
-- Profile-specific configuration, reconnect state, logs, and session assets are isolated from normal Steam data and from other offline processes.
-- Hosts publish room-code lobby records into a shared machine-local debug registry. Clients on the same machine use the normal room-code Join flow.
+- Profile-specific configuration, reconnect state, logs, Scryfall imports, and session assets are isolated from normal Steam data and from other offline processes.
+- A profile lock prevents two processes from using the same debug peer ID and named-pipe endpoint at once. Use a different profile for every concurrently running process.
+- Hosts publish room-code lobby records into a shared machine-local debug registry. Clients on the same machine use the normal room-code Join flow. Offline profile configuration and card imports live below `%LocalAppData%\DraftSimulator\OfflineDebug\Profiles\<profile>`; the shared lobby registry lives under the sibling `Lobbies` directory.
 - The normal `SessionCoordinator`, wire protocol, authority checks, asset transfer, drafting, disconnect, and reconnect behavior remain in use.
 - Steam invitations are unavailable in offline mode.
 - Release builds reject the offline startup option. Offline mode does not replace any required real-Steam acceptance testing.
@@ -137,6 +138,12 @@ Use `%LocalAppData%\DraftSimulator` as the application data root.
 DraftSimulator/
   host.ini
   client-state.json
+  Scryfall/
+    .scryfall-sets-cache.json
+    <set-name>/
+      .scryfall-import.json
+      Common/
+      ...
   Logs/
   Sessions/
     <session-id>/
@@ -212,7 +219,7 @@ Required concepts:
 - `AssetHash`: SHA-256 of transformed WebP bytes.
 - `CardInstanceId`: one occurrence of a card within the draft. Replacement mode may create multiple instances from one definition.
 - `PackId`: one generated pack.
-- `Rarity`: one of the six supported rarity values.
+- `Rarity`: one of the eight supported rarity values: Common, Uncommon, Rare, Super Rare, Ultra Rare, Mythic Rare, Special, or Bonus.
 - `PlayerState`: identity, name, order, connection state, lobby ready state, draft locked state, current pack, and collection.
 - `CardDefinition`: host-only source path, filename-derived fallback name, rarity, optional metadata, and scan information.
 - `CardInstance`: instance ID, definition ID, and asset hash once transformed.
@@ -280,17 +287,21 @@ Warnings do not block a draft unless the remaining usable pool cannot satisfy th
 
 ### 9.1 Scryfall Set Import
 
-The host may import a set using a set name or set code. Imports populate the configured Scryfall directory with a sibling directory named from the canonical set name; filesystem-invalid characters are replaced, and a set-code suffix disambiguates collisions. Each set directory contains the standard rarity folders and is selected and scanned after import.
+The host may import a set using an exact case-insensitive set name or set code. Fuzzy matches are not resolved; ambiguous names direct the host to use the set code. Imports populate the configured Scryfall directory with a sibling directory named from the canonical set name; filesystem-invalid characters are replaced, and a set-code suffix disambiguates collisions. Each set directory contains the standard rarity folders and is selected and scanned after import.
 
-- Resolve names/codes from a locally cached Scryfall set catalog, refreshing that catalog at most once per 24 hours.
-- Search cards with `GET https://api.scryfall.com/cards/search?q=set%3A<code>&unique=prints&order=set` and follow each supplied `next_page` URI.
-- Wait at least one second between card-search pages. Send Scryfall's required `User-Agent` and `Accept` headers, respect 429 responses, and restrict API pagination to HTTPS `api.scryfall.com`.
-- Use the full-card PNG image when available, with `large` and `normal` image fallbacks. For multifaced cards use the front face image. Download from HTTPS Scryfall image hosts with at most four concurrent image requests.
+- Resolve names/codes from a locally cached Scryfall set catalog (`.scryfall-sets-cache.json`), refreshing it after 24 hours. If Force fetch is off and a matching set-name directory is already present, reuse it before making API requests.
+- Search cards with `GET https://api.scryfall.com/cards/search?q=set%3A<code>&unique=prints&order=set`; card search returns up to 175 results per page. Follow each supplied `next_page` URI until `has_more` is false.
+- Wait at least one second between card-search page requests. Send Scryfall's required `User-Agent` and `Accept` headers, honor `Retry-After` on 429 responses (up to three attempts), and restrict API pagination to HTTPS `api.scryfall.com`.
+- Use the full-card PNG image when available, with `large` and `normal` image fallbacks. Use the card-level image URI when present; otherwise use the first face with an image URI (normally the front face). Download from HTTPS Scryfall image hosts with at most four concurrent image requests.
 - Map Scryfall `common`, `uncommon`, `rare`, `mythic`, `special`, and `bonus` directly to `Common`, `Uncommon`, `Rare`, `Mythic Rare`, `Special`, and `Bonus` folders. `Super Rare` and `Ultra Rare` remain available for user-provided directories.
 - Make filenames unique using card name and collector number, adding a short Scryfall ID suffix only on collision. The filename stem remains the fallback export name.
-- Enforce `MaxCardCount` and `MaxSourceImageBytes`. Cards without an available image or whose image exceeds the source byte limit are skipped and counted in the host-visible result. Other failed HTTP requests abort the import.
+- Enforce `MaxCardCount` before image transfer and `MaxSourceImageBytes` while streaming each image. Cards without an image URI, whose image is missing (404/410), or whose image exceeds the source byte limit are skipped and counted in the host-visible result. Other failed HTTP requests abort the import.
 - With **Force fetch** unchecked, reuse and scan an existing set directory without fetching card pages or images. With it checked, download to a sibling staging directory and replace only a matching Scryfall-managed set directory after successful completion. Cancellation or failure preserves the prior import. A non-Scryfall directory is never overwritten.
 - Keep a completion marker in each imported set folder and cache the set catalog for at least 24 hours. Do not add `data.csv`; export names use unique filename stems until a metadata schema is defined.
+
+If refreshing an expired catalog fails, a previously cached catalog may be used to resolve the name/code; the subsequent card search still requires a successful API response.
+
+The cache belongs to the configured Scryfall directory. Card filenames use `<card name> [<collector number>]`, adding the first eight characters of the Scryfall card ID if that stem still collides. The filename stem is consequently the fallback Cockatrice export name.
 
 The **Refresh** button performs a complete rescan and rebuilds the detected-rarity configuration. The host cannot browse or refresh while ready.
 
@@ -519,6 +530,7 @@ If host processing, transfer, verification, disconnection, or disk-space validat
 - Every message is valid only in explicitly listed session phases.
 - The transport SteamID determines the sender. Never trust a claimed player ID from a client payload.
 - Send all control and asset messages with Steam's reliable delivery flag. The application does not use unreliable messages in the MVP.
+- During `Complete`, `AssetNeed`, `PreparationReady`, and `PreparationFailed` are accepted only for the retained player currently completing reconnect asset synchronization; ordinary completed clients cannot use these actions.
 
 Control envelope:
 
@@ -614,7 +626,7 @@ The host must verify:
 - Unlocking is allowed only before all-player resolution begins.
 - Asset hashes in `AssetNeed` belong to the active manifest.
 - Preparation confirmation is accepted only after the client requested or already possessed every required asset.
-- Reconnect session IDs and SteamIDs match retained state.
+- Reconnect session IDs and transport SteamIDs match retained disconnected state. Asset resynchronization in `Complete` is limited to that reconnecting player.
 
 Do not render arbitrary remote error text. Host-to-client errors use an `ErrorCode` enum mapped to local text. The only user-originated text displayed to other users is the validated player name, rendered in plain text controls.
 
@@ -706,11 +718,12 @@ Clipboard output contains one line per collected card instance:
 - The client start screen offers **Reconnect** when `client-state.json` indicates an abnormal exit or active session.
 - Reconnect uses the stored lobby ID, host SteamID, session ID, and optional room code.
 - The host identifies the player by SteamID.
-- The host sends a current manifest and personalized state snapshot.
+- The host accepts a direct peer connection from a disconnected retained player during `Drafting` or `Complete`, even when the Steam lobby is closed to joins. It validates both the transport SteamID and retained session ID, then returns `Welcome(Reconnected)` and the current asset manifest.
 - The client verifies cached assets and requests only missing hashes.
-- Once assets are ready, the client resumes the current draft state.
+- Once the client reports all required assets ready, the host marks the retained player connected and sends a newly generated personalized draft snapshot, or that player's completion result if the draft completed during transfer. The client does not resume from a snapshot captured before asset transfer.
+- Retained identity, selection, current pack, collection, and turn order do not change during the reconnect handshake. Reconnect asset failure closes only the reconnecting connection and does not roll back an active draft or completion state.
 
-A stale reconnect attempt receives a predefined `SessionNoLongerAvailable` error and remains on the start screen.
+A stale reconnect attempt receives a predefined `SessionNoLongerAvailable` error, clears stale reconnect state, and remains on the start screen.
 
 ### 17.3 Host Failure
 
@@ -732,6 +745,7 @@ Reopening:
 - Clears draft packs, selections, collections, and completion state.
 - May retain the selected directory and current host settings in memory.
 - Creates a new application roster containing only the unready host.
+- Reopening is deferred while a retained player's reconnect asset synchronization is in progress.
 - Sends `LobbyAvailability` to completed remote clients and requires them to leave the old Steam lobby while remaining on their completion screens. Keep the P2P connection open long enough to deliver that notification.
 - Completed remote clients do not occupy Steam or application roster slots and do not participate in the all-ready check until they choose to join.
 - Restores a returning player's prior validated name when available and adds that player to the new roster as unready.
@@ -755,7 +769,7 @@ Implementation boundaries:
 - Use fallback set code `DRAFT`, long name `Draft Simulator Export`, and set type `Custom`.
 - Omit the optional release date when no metadata supplies one.
 - Emit one card element per valid scanned definition.
-- Emit fallback card name, empty text, `Unknown` for both `type` and `maintype`, `3` for `tablerow`, and the mapped lowercase rarity name.
+- Emit fallback card name, empty text, `Unknown` for both `type` and `maintype`, `3` for `tablerow`, and the mapped lowercase rarity name (`special` and `bonus` for the two Scryfall rarity values).
 - Use the definition's GUID as that card's set UUID.
 - Use the `DRAFT` set code in every fallback card set element.
 - Export only from the host's scanned metadata snapshot.
@@ -802,6 +816,7 @@ Lobby requirements:
 - Connection status.
 - Host kick controls.
 - Host card-directory Browse and Refresh controls.
+- Scryfall set name/code import into the INI-configured Scryfall directory, including Force fetch, progress, cancellation, and reuse of existing set folders.
 - Host settings controls for detected rarities and draft rules.
 - Rarity controls disable the weight when minimum equals maximum. When weight is zero, keep the weight editable but disable maximum editing and visibly indicate that the rarity contributes exactly its minimum.
 - Host settings hidden entirely from clients.
@@ -810,7 +825,7 @@ Lobby requirements:
 
 Draft requirements:
 
-- Virtualized or lazy-loaded card grid.
+- Scrollable wrapping card grid. The current implementation creates view models for every card in the current pack; image decoding runs asynchronously and the decoded images use the bounded bitmap cache.
 - Click selection with a visible selected state.
 - Pool cards display at 225 by 315 pixels. The side preview displays at 450 by 630 pixels, using the same transformed asset.
 - Hovering a card updates the side preview. Each client has an independent **Hover zoom overlay** option, off by default; when enabled, hovering opens a large overlay that closes when the pointer leaves the card.
@@ -858,7 +873,11 @@ Define stable error enums for at least:
 
 Map enums to local UI strings. A host may include a failing player's validated display name, but not arbitrary explanatory text.
 
+Scryfall import failures are reported in the host-only import status area and are not wire-protocol error codes. Do not render response bodies supplied by Scryfall as UI text.
+
 Write rolling local logs under `%LocalAppData%\DraftSimulator\Logs`. Logs may contain IDs, phases, counts, error codes, revisions, and the host's reproduction seed. Avoid logging asset bytes, room codes, source paths, card metadata, or complete wire payloads by default.
+
+Offline Debug profile logs are isolated under `%LocalAppData%\DraftSimulator\OfflineDebug\Profiles\<profile>\Logs`.
 
 No telemetry or remote logging is required.
 
@@ -874,12 +893,11 @@ dotnet publish src/DraftSimulator.App/DraftSimulator.App.csproj -c Release -r wi
 
 Do not require single-file publishing. The output may contain the application executable, .NET runtime files, Avalonia/Skia native files, Steamworks.NET dependencies, `steam_api64.dll`, and `steam_appid.txt`.
 
-Create two build profiles:
+The current repository uses the standard MSBuild `Debug` and `Release` configurations; separate `Development` and `FriendsTest` MSBuild configurations and ZIP packaging are not currently implemented. Define `SteamAppId` once as an MSBuild property with a default of `480`. `steam_appid.txt` is generated by default for build/publish output and can be disabled with `GenerateSteamAppIdFile=false` (or `SteamDepotBuild=true`). Steam initialization verifies the configured AppID. Future Steam builds with a dedicated AppID must set the property to the assigned value, omit `steam_appid.txt` from the depot, and allow Steam to provide the AppID.
 
-- `Development`: AppID 480, diagnostics enabled, launched from the build tree.
-- `FriendsTest`: AppID 480, portable ZIP, diagnostics at normal level.
+### 22.1 Offline Debug Artifact
 
-Define `SteamAppId` once as an MSBuild property with a default of `480`. Development and FriendsTest builds generate `steam_appid.txt` from that property and verify after Steam initialization that Steam reports the expected AppID. Future Steam builds with a dedicated AppID must set the property to the assigned value, omit `steam_appid.txt` from the depot, and allow Steam to provide the AppID.
+`publish-offline-debug.ps1` creates a separate self-contained Windows Debug artifact at `artifacts/publish/offline-debug-countdown-zoom-win-x64/DraftSimulator.Debug.exe`. The artifact defaults to offline mode and the `host` profile, accepts `--profile <name>` for additional instances, and does not generate `steam_appid.txt`. The ordinary `DraftSimulator.App.exe` continues to use Steam unless Debug is explicitly launched with `--offline --profile <name>`.
 
 ## 23. Testing Strategy
 
@@ -918,7 +936,7 @@ Cover:
 - Invalid IDs and selection counts.
 - Truncated, oversized, out-of-range, duplicated, and wrong-session asset chunks.
 - Hash and byte-length verification.
-- Fuzzed malformed control and binary inputs without process crashes.
+- Representative malformed control and binary inputs are rejected without process crashes. An automated fuzzing campaign is not currently included.
 
 ### 23.3 Infrastructure Tests
 
@@ -935,12 +953,14 @@ Cover:
 - Cache reuse and cleanup policies.
 - INI validation.
 - Atomic client-state updates.
-- XML escaping once export fields are specified.
+- XML escaping, fallback rarity names, and duplicate export-name validation.
 - Scryfall set-name/code resolution, cached catalog behavior, pagination delay, all rarity mappings, image fallbacks and size limits, existing-folder reuse, and transactional force-fetch failure handling.
 
 ### 23.4 Integration Tests
 
-Use an in-memory fake transport to run one host and up to seven clients in one test process. Cover full lobby-to-completion drafts, transfer failure rollback, disconnect/reconnect, kick/rejoin, malformed client messages, and host closure.
+Coordinator integration tests use an in-memory fake transport with one host and one client to cover the full lobby-to-completion flow, asset transfer and rollback, disconnect/force-ready/reconnect during drafting and completion, stale reconnect rejection, lobby reopening, kicking, and graceful host closure. A separate named-pipe coordinator integration test covers a local host/client draft and direct reconnect during drafting. The named-pipe transport infrastructure test checks seven simultaneous remote peers; full eight-player coordinator interaction is not currently an automated integration test.
+
+The countdown integration test checks that host and client snapshots display each remaining second. XAML compilation is automated; hover-zoom behavior, image sizing, and constrained-window layout still require Windows UI smoke testing.
 
 Perform manual Steam tests with separate Steam accounts and preferably separate machines or virtual machines:
 
@@ -951,6 +971,12 @@ Perform manual Steam tests with separate Steam accounts and preferably separate 
 - Large asset transfer with bandwidth throttling.
 - Steam interruption and reconnection.
 
+Perform Windows UI and live Scryfall smoke tests:
+
+- Import a real set by exact name and by set code; inspect rarity folders, skipped-image status, and the post-import scan.
+- Reuse an existing import with Force fetch off; force-fetch it and verify it is replaced only after success. Interrupt/fail a forced fetch and confirm the old import remains intact.
+- Verify host and client countdown updates, hover side preview, per-client optional zoom overlay, and lobby/draft layout at the default and minimum window sizes.
+
 For local UI investigation, launch separate Debug processes with distinct profiles:
 
 ```text
@@ -958,6 +984,8 @@ powershell -ExecutionPolicy Bypass -File .\publish-offline-debug.ps1
 .\artifacts\publish\offline-debug-countdown-zoom-win-x64\DraftSimulator.Debug.exe
 .\artifacts\publish\offline-debug-countdown-zoom-win-x64\DraftSimulator.Debug.exe --profile client1
 ```
+
+The first process defaults to profile `host`; the second uses `client1`. Use the host's displayed room code in the client. The offline data root is isolated per profile.
 
 ## 24. Acceptance Criteria
 
@@ -977,6 +1005,9 @@ The MVP is technically complete when:
 - Players can copy their own final card list.
 - The host can export a Cockatrice version 4 XML file using fallback metadata; optional `data.csv` enrichment remains deferred.
 - The host can import a Scryfall set into the configured directory, and Special/Bonus cards scan, configure, draft, and export as distinct rarities.
+- The all-ready countdown displays 3, 2, 1 to host and clients and cancels when the all-ready condition ceases.
+- The draft side preview displays the transformed image at 450×630 pixels; each client can independently enable the hover zoom overlay. Pool cards display at 225×315 pixels.
+- The dedicated Debug artifact can run a host and same-machine clients without Steam, using separate named profiles.
 
 ## 25. Dedicated AppID Migration
 

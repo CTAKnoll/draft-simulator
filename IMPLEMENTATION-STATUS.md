@@ -6,7 +6,7 @@ The application is complete at the code and automated-test level pending human Q
 
 Verification completed on September 25, 2026:
 
-- 157 tests passed on .NET SDK 10.0.401.
+- 158 tests passed on .NET SDK 10.0.401.
 - Release build completed with zero warnings.
 - Self-contained Windows x64 publish completed at `artifacts/publish/win-x64-net10/`.
 - Publish contains `DraftSimulator.App.exe`, `steam_api64.dll`, and `steam_appid.txt` containing AppID 480.
@@ -14,11 +14,11 @@ Verification completed on September 25, 2026:
 ## Remaining Blockers
 
 1. **Real Steam validation is required.** Automated tests use fake transports. Run the Windows publish with two Steam accounts/machines to verify AppID 480 lobby search, relay connectivity, invitations, asset transfer, disconnects, and direct reconnect.
-2. **Windows UI smoke testing is required.** XAML compiles, but the complete UI has not been interactively exercised on Windows in this environment. Exercise Scryfall import, existing-folder reuse, and forced replacement against the live API.
+2. **Windows UI smoke testing is required.** XAML compiles, but the complete UI has not been interactively exercised on Windows in this environment. Exercise Scryfall import, existing-folder reuse, forced replacement against the live API, the live countdown, hover preview/optional zoom, and constrained-window scrolling.
 
-Reconnect now persists the host, lobby, session, room, and player identity; connects directly to the retained host without rejoining a closed lobby; verifies the retained SteamID and session; reuses complete or partial cached assets; and applies a fresh personalized snapshot only after asset verification. Integration tests cover latest-state restoration, cache-hit transfer avoidance, stale-session rejection, reconnect-state cleanup, and graceful host closure.
+Reconnect now persists the host, lobby, session, room, and player identity; connects directly to the retained host without rejoining a closed lobby; verifies the retained SteamID and session; reuses complete or partial cached assets; and applies a fresh personalized snapshot or completion result only after asset verification. Integration tests cover latest-state restoration, cache-hit transfer avoidance, stale-session rejection, completion reconnect, reconnect-state cleanup, and graceful host closure.
 
-The all-ready lobby countdown displays each remaining second to hosts and clients. Hovering a draft card opens a large, transformed-image zoom preview; clicking still selects the card.
+The all-ready lobby countdown displays each remaining second to hosts and clients. Draft cards have a larger side preview and a per-client, opt-in hover zoom overlay; clicking still selects the card. Lobby and draft side panels scroll when their available height is constrained.
 
 ## Offline Debug Mode
 

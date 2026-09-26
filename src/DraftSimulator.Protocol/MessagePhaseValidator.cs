@@ -9,7 +9,7 @@ public static class MessagePhaseValidator
             ClientMessageCode.Hello => phase == ProtocolPhase.Handshake,
             ClientMessageCode.SetName or ClientMessageCode.SetLobbyReady => phase is ProtocolPhase.LobbyOpen or ProtocolPhase.StartingCountdown,
             ClientMessageCode.SetSelection or ClientMessageCode.SetPickLocked => phase == ProtocolPhase.Drafting,
-            ClientMessageCode.AssetNeed or ClientMessageCode.PreparationReady or ClientMessageCode.PreparationFailed => phase is ProtocolPhase.PreparingAssets or ProtocolPhase.Drafting,
+            ClientMessageCode.AssetNeed or ClientMessageCode.PreparationReady or ClientMessageCode.PreparationFailed => phase is ProtocolPhase.PreparingAssets or ProtocolPhase.Drafting or ProtocolPhase.Complete,
             ClientMessageCode.ReopenLobbyJoin => phase is ProtocolPhase.Complete or ProtocolPhase.LobbyOpen,
             _ => false,
         };
