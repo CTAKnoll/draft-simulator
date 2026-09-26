@@ -1,0 +1,5 @@
+Steamworks.NET release 2024.8.0
+https://github.com/rlabrecque/Steamworks.NET/tree/2024.8.0
+
+steam_api64.dll source path:
+com.rlabrecque.steamworks.net/Plugins/steam_api64.dll

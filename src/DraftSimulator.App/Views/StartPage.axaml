@@ -1,0 +1,50 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DraftSimulator.App.Views.StartPage">
+  <Grid ColumnDefinitions="1.15*,0.85*">
+    <Border Background="#121512" Padding="64">
+      <Grid RowDefinitions="Auto,*,Auto">
+        <TextBlock Classes="eyebrow" Text="DRAFT SIMULATOR / PRIVATE BUILD" />
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="20" MaxWidth="620">
+          <TextBlock Text="Build the pool.&#10;Pass the pack."
+                     FontSize="60"
+                     FontWeight="Bold"
+                     LineHeight="65"
+                     Foreground="#F3F5ED" />
+          <TextBlock Text="A host-authoritative card draft for arbitrary image sets. No accounts, no deck database, no unnecessary machinery."
+                     FontSize="18"
+                     Foreground="#AAB1A7"
+                     TextWrapping="Wrap"
+                     MaxWidth="570"
+                     HorizontalAlignment="Left" />
+        </StackPanel>
+        <TextBlock Grid.Row="2" Foreground="#697068" Text="{Binding TransportDescription}" />
+      </Grid>
+    </Border>
+
+    <Border Grid.Column="1" Margin="32" Classes="panel" VerticalAlignment="Center">
+      <StackPanel Spacing="16">
+        <TextBlock Text="Enter the table" FontSize="28" FontWeight="SemiBold" />
+        <TextBlock Text="Player name" Foreground="#AAB1A7" />
+        <TextBox Text="{Binding PlayerName}" Watermark="1-16 ASCII characters" />
+        <Button Classes="primary" Content="Host a draft" Command="{Binding HostCommand}" HorizontalAlignment="Stretch" />
+
+        <Border Height="1" Background="#323832" Margin="0,8" />
+
+        <TextBlock Text="Room code" Foreground="#AAB1A7" />
+        <TextBox Text="{Binding RoomCode}" Watermark="ABCDE-FGHJK" />
+        <Button Content="Join room" Command="{Binding JoinCommand}" HorizontalAlignment="Stretch" />
+        <Button Content="Join Steam invitation" Command="{Binding JoinSteamInviteCommand}"
+                IsVisible="{Binding SteamInviteAvailable}" HorizontalAlignment="Stretch" />
+        <Button Content="Reconnect to last draft"
+                Command="{Binding ReconnectCommand}"
+                IsVisible="{Binding CanReconnect}"
+                HorizontalAlignment="Stretch" />
+        <TextBlock Text="{Binding StatusMessage}"
+                   Foreground="#FF8D7B"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

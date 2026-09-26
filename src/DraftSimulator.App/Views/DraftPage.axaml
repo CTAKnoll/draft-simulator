@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DraftSimulator.App.Views.DraftPage">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="18">
+      <StackPanel><TextBlock Classes="eyebrow" Text="LIVE DRAFT"/><TextBlock Text="Choose your cards" FontSize="30" FontWeight="Bold"/><TextBlock Text="Hover a card to preview · click to select" Foreground="#AAB1A7" FontSize="12"/></StackPanel>
+      <CheckBox Grid.Column="1" Content="Hover zoom overlay" IsChecked="{Binding IsZoomEnabled}" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="2" Text="{Binding RoundText}" Classes="eyebrow" VerticalAlignment="Center"/>
+    </Grid>
+    <Grid Grid.Row="1" ColumnDefinitions="*,470" ColumnSpacing="20" Margin="0,16">
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding CurrentPack}">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate><DataTemplate>
+            <Button Classes="card" Classes.selected="{Binding IsSelected}" Command="{Binding ToggleCommand}" Margin="5" Padding="4"
+                    PointerEntered="CardPointerEntered" PointerExited="CardPointerExited">
+              <Image Source="{Binding Image}" Width="225" Height="315" Stretch="Uniform"/>
+            </Button>
+          </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+      <Grid Grid.Column="1" RowDefinitions="*,Auto" RowSpacing="10">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="12">
+            <Border Classes="panel" Padding="8"><Image Source="{Binding PreviewImage}" Width="450" Height="630" Stretch="Uniform"/></Border>
+            <Border Classes="panel"><ItemsControl ItemsSource="{Binding Players}"><ItemsControl.ItemTemplate><DataTemplate>
+              <Grid ColumnDefinitions="*,Auto" Margin="0,5"><StackPanel><TextBlock Text="{Binding Name}" FontWeight="SemiBold"/><TextBlock Text="{Binding Connection}" Foreground="#AAB1A7" FontSize="11"/></StackPanel><TextBlock Grid.Column="1" Text="{Binding PickStatus}" Foreground="#D5FF47"/><TextBlock Grid.Column="1" Text="{Binding CardCount}" Margin="0,20,0,0" HorizontalAlignment="Right"/></Grid>
+            </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Border>
+          </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Spacing="8">
+        <Button Classes="primary" Content="Lock In" Command="{Binding LockCommand}" IsEnabled="{Binding CanLock}"/>
+        <Button Content="Unlock" Command="{Binding UnlockCommand}" IsEnabled="{Binding CanUnlock}"/>
+        <Button Content="Force Ready" Command="{Binding ForceReadyCommand}" IsVisible="{Binding CanForceReady}"/>
+        </StackPanel>
+      </Grid>
+    </Grid>
+    <StackPanel Grid.Row="2"><TextBlock Classes="eyebrow" Text="YOUR COLLECTION"/><ScrollViewer HorizontalScrollBarVisibility="Auto"><ItemsControl ItemsSource="{Binding Collection}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Image Source="{Binding Image}" Width="72" Height="102" Stretch="Uniform" Margin="4"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer></StackPanel>
+    <Border Grid.RowSpan="3" IsVisible="{Binding IsZoomOpen}" Background="#D9000000" IsHitTestVisible="False">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+        <Border Classes="panel" Padding="10" BoxShadow="0 14 50 0 #B0000000">
+          <Image Source="{Binding PreviewImage}" MaxWidth="470" MaxHeight="650" Stretch="Uniform"/>
+        </Border>
+        <TextBlock Text="ZOOM PREVIEW · MOVE POINTER AWAY TO CLOSE" HorizontalAlignment="Center" Classes="eyebrow"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

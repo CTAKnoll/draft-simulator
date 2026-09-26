@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="DraftSimulator.App.Views.CompletionPage">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="36">
+    <StackPanel><TextBlock Classes="eyebrow" Text="DRAFT COMPLETE"/><TextBlock Text="Your collection" FontSize="34" FontWeight="Bold"/></StackPanel>
+    <ScrollViewer Grid.Row="1" Margin="0,22"><ItemsControl ItemsSource="{Binding Collection}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><StackPanel Width="132" Margin="6"><Image Source="{Binding Image}" Height="180" Stretch="Uniform"/><TextBlock Text="{Binding ExportName}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
+      <Button Classes="primary" Content="Copy card list" Command="{Binding CopyCommand}"/>
+      <Button Grid.Column="1" Content="Export Cockatrice XML" Command="{Binding ExportCommand}" IsVisible="{Binding IsHost}"/>
+      <Button Grid.Column="2" Content="Reopen lobby" Command="{Binding ReopenLobbyCommand}" IsVisible="{Binding IsHost}"/>
+      <Button Grid.Column="3" Content="Join reopened lobby" Command="{Binding JoinLobbyCommand}" IsVisible="{Binding LobbyAvailable}"/>
+      <TextBlock Grid.Column="4" Text="{Binding StatusMessage}" Foreground="#D5FF47" VerticalAlignment="Center"/>
+      <Button Grid.Column="5" Content="Exit" Command="{Binding ExitCommand}"/>
+    </Grid>
+  </Grid>
+</UserControl>

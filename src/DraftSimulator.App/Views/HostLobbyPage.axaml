@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DraftSimulator.App.Views.HostLobbyPage">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,24">
+      <StackPanel>
+        <TextBlock Classes="eyebrow" Text="LIVE LOBBY" />
+        <TextBlock Text="Build the table" FontSize="34" FontWeight="Bold" Margin="0,6,0,0" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+        <TextBlock Text="ROOM CODE" Foreground="#697068" HorizontalAlignment="Right" />
+        <TextBlock Text="{Binding RoomCode}" FontSize="22" FontWeight="Bold" Foreground="#D5FF47" LetterSpacing="2" />
+      </StackPanel>
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="1.45*,0.75*" ColumnSpacing="18">
+      <ScrollViewer IsVisible="{Binding IsHost}">
+        <StackPanel Spacing="18">
+         <Border Classes="panel" IsVisible="{Binding IsHost}">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Card source" FontSize="20" FontWeight="SemiBold" />
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBox Text="{Binding CardDirectory}" IsReadOnly="True" Watermark="No directory selected" />
+                <Button Grid.Column="1" Content="Browse" Command="{Binding BrowseCommand}" IsEnabled="{Binding CanEdit}" />
+                <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding CanEdit}" />
+              </Grid>
+               <TextBlock Text="{Binding ScanSummary}" Foreground="#AAB1A7" />
+               <TextBlock Text="{Binding WarningMessage}" Foreground="#F4C95D" TextWrapping="Wrap" />
+               <TextBlock Text="Import a Scryfall set" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
+               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                 <TextBox Text="{Binding ScryfallSetName}" Watermark="Set name or code (e.g. Zendikar or zen)" IsEnabled="{Binding CanEdit}" />
+                 <Button Grid.Column="1" Content="Add from Scryfall" Command="{Binding AddFromScryfallCommand}" IsEnabled="{Binding CanEdit}" />
+               </Grid>
+               <CheckBox Content="Force fetch and replace existing import" IsChecked="{Binding ForceScryfallFetch}" IsEnabled="{Binding CanEdit}" />
+               <TextBlock Text="{Binding ScryfallStatus}" Foreground="#AAB1A7" TextWrapping="Wrap" />
+               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsScryfallImporting}">
+                 <ProgressBar Minimum="0" Maximum="100" Value="{Binding ScryfallProgress}" VerticalAlignment="Center" />
+                 <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelScryfallImportCommand}" />
+               </Grid>
+             </StackPanel>
+          </Border>
+
+          <Border Classes="panel" IsEnabled="{Binding CanEdit}">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Rarity composition" FontSize="20" FontWeight="SemiBold" />
+              <Grid ColumnDefinitions="*,90,90,110" ColumnSpacing="10">
+                <TextBlock Text="RARITY" Classes="eyebrow" />
+                <TextBlock Grid.Column="1" Text="MIN" Classes="eyebrow" />
+                <TextBlock Grid.Column="2" Text="MAX" Classes="eyebrow" />
+                <TextBlock Grid.Column="3" Text="WEIGHT" Classes="eyebrow" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding Rarities}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="*,90,90,110" ColumnSpacing="10" Margin="0,4">
+                      <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                      <NumericUpDown Grid.Column="1" Value="{Binding Minimum}" Minimum="0" IsEnabled="{Binding $parent[UserControl].DataContext.CanEdit}" />
+                      <NumericUpDown Grid.Column="2" Value="{Binding Maximum}" Minimum="0" IsEnabled="{Binding IsMaximumEnabled}" />
+                      <NumericUpDown Grid.Column="3" Value="{Binding Weight}" Minimum="0" Increment="0.1" IsEnabled="{Binding IsWeightEnabled}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="18">
+        <Border Classes="panel">
+          <StackPanel Spacing="12">
+            <TextBlock Text="Pack rules" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Replacement" Foreground="#AAB1A7" />
+            <ComboBox ItemsSource="{Binding ReplacementModes}" SelectedItem="{Binding ReplacementMode}" IsEnabled="{Binding CanEdit}" />
+            <TextBlock Text="Cards per pack" Foreground="#AAB1A7" />
+            <NumericUpDown Value="{Binding PackSize}" Minimum="1" IsEnabled="{Binding CanEdit}" />
+            <TextBlock Text="Cards per pick" Foreground="#AAB1A7" />
+            <NumericUpDown Value="{Binding CardsPerPick}" Minimum="1" IsEnabled="{Binding CanEdit}" />
+            <TextBlock Text="Packs per player" Foreground="#AAB1A7" />
+            <NumericUpDown Value="{Binding PacksPerPlayer}" Minimum="1" IsEnabled="{Binding CanEdit}" />
+            <TextBlock Text="Pass direction" Foreground="#AAB1A7" />
+            <ComboBox ItemsSource="{Binding DirectionRules}" SelectedItem="{Binding DirectionRule}" IsEnabled="{Binding CanEdit}" />
+          </StackPanel>
+        </Border>
+
+         <Border Classes="panel">
+           <StackPanel Spacing="10">
+             <TextBlock Text="Lobby" FontSize="20" FontWeight="SemiBold" />
+             <TextBlock Text="Your name" Foreground="#AAB1A7" />
+             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+               <TextBox Text="{Binding PlayerName}" MaxLength="16" />
+               <Button Grid.Column="1" Content="Set name" Command="{Binding SetNameCommand}" />
+             </Grid>
+             <ItemsControl ItemsSource="{Binding Players}">
+               <ItemsControl.ItemTemplate>
+                 <DataTemplate>
+                   <Border BorderBrush="#323832" BorderThickness="0,0,0,1" Padding="0,10">
+                     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                       <StackPanel>
+                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                         <TextBlock Text="{Binding Role}" Classes="eyebrow" FontSize="10" />
+                       </StackPanel>
+                       <TextBlock Grid.Column="1" Text="{Binding ReadyStatus}" VerticalAlignment="Center" Foreground="#AAB1A7" />
+                       <Button Grid.Column="2" Content="Kick" Command="{Binding KickCommand}" IsVisible="{Binding CanKick}" />
+                     </Grid>
+                   </Border>
+                 </DataTemplate>
+               </ItemsControl.ItemTemplate>
+             </ItemsControl>
+              <TextBlock Text="{Binding SessionStatus}" Foreground="#F4C95D" TextWrapping="Wrap" />
+               <Button Content="Invite Steam friends" Command="{Binding InviteSteamFriendsCommand}" IsVisible="{Binding CanInviteSteamFriends}" />
+             <Button Classes="primary" Content="Ready" Command="{Binding ReadyCommand}" IsVisible="{Binding !IsReady}" />
+             <Button Content="Unready" Command="{Binding UnreadyCommand}" IsVisible="{Binding IsReady}" />
+              <Border Background="#253016" CornerRadius="6" Padding="12" IsVisible="{Binding IsPreparing}">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Preparing and verifying session assets..." Foreground="#D5FF47" TextWrapping="Wrap" />
+                  <ProgressBar Minimum="0" Maximum="100" Value="{Binding PreparationProgress}" />
+                  <ItemsControl ItemsSource="{Binding Players}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding Name}" /><TextBlock Grid.Column="1" Text="{Binding PreparationStatus}" Foreground="#AAB1A7" /></Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+           </StackPanel>
+        </Border>
+      </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,22,0,0">
+      <Button Content="Leave lobby" Command="{Binding BackCommand}" IsEnabled="{Binding !IsReady}" />
+      <Border Grid.Column="1" Margin="20,0,0,0" Padding="12,8" Background="#321B19" CornerRadius="6" IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <TextBlock Text="{Binding ErrorMessage}" Foreground="#FF8D7B" TextWrapping="Wrap" />
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

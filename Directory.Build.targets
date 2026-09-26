@@ -1,0 +1,16 @@
+<Project>
+  <Target Name="WriteSteamAppIdFile" AfterTargets="Build"
+          Condition="'$(GenerateSteamAppIdFile)' == 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">
+    <WriteLinesToFile File="$(TargetDir)steam_appid.txt"
+                      Lines="$(SteamAppId)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+  </Target>
+  <Target Name="WritePublishedSteamAppIdFile" AfterTargets="Publish"
+          Condition="'$(GenerateSteamAppIdFile)' == 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">
+    <WriteLinesToFile File="$(PublishDir)steam_appid.txt"
+                      Lines="$(SteamAppId)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+  </Target>
+</Project>

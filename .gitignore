@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+TestResults/
+artifacts/
+publish/
+steam_appid.txt
+host.ini
+client-state.json
+Sessions/
+Logs/

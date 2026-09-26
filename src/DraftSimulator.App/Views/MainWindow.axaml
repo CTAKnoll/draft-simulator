@@ -1,0 +1,27 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DraftSimulator.App.ViewModels"
+        xmlns:views="using:DraftSimulator.App.Views"
+        x:Class="DraftSimulator.App.Views.MainWindow"
+        Title="Draft Simulator"
+        Width="1180"
+        Height="760"
+        MinWidth="920"
+        MinHeight="620"
+        Background="#0D0F0E">
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:StartPageViewModel">
+      <views:StartPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:HostLobbyViewModel">
+      <views:HostLobbyPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DraftViewModel">
+      <views:DraftPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:CompletionViewModel">
+      <views:CompletionPage />
+    </DataTemplate>
+  </Window.DataTemplates>
+  <ContentControl Content="{Binding CurrentPage}" />
+</Window>
